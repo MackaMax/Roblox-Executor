@@ -46,6 +46,24 @@ Browser (CodeMirror editor, three.js viewport)
 
 ## Quick start
 
+### The Windows executable
+
+Download **`download/RobloxExecutorLab-win-x64.zip`** (31.5 MB) from this
+repository, unzip it, and double-click **`RobloxExecutorLab-win-x64.exe`**.
+
+That is the whole install. There is no Node.js requirement, no `npm install`, no
+folder to keep next to it — the server, the Lua engine and the entire UI are
+inside the single file. It prints a banner, starts on <http://localhost:5173>,
+and opens your default browser. Close the console window to stop it.
+
+- If port 5173 is already taken it automatically walks up to the next free port
+  and prints the URL it settled on.
+- Windows SmartScreen will warn you ("Windows protected your PC") because the exe
+  is not code-signed. Choose **More info → Run anyway**. Signing certificates cost
+  money and this is a free educational project.
+
+### From source
+
 ```bash
 npm install
 npm start          # http://localhost:5173
@@ -55,8 +73,21 @@ No build step is needed to run it — a prebuilt `public/js/bundle.js` is served
 
 ```bash
 npm run build      # rebuild the bundle
-npm test           # 54 engine regression tests
+npm test           # 56 engine regression tests
 ```
+
+### Building the executable yourself
+
+```bash
+npm run exe:win    # fetch node.exe, bundle everything, emit dist/*.exe
+npm run exe:linux  # same thing as a Linux binary, handy for testing
+```
+
+The build inlines `public/` into the binary, bundles the server to a single
+CommonJS file, and injects both into a genuine `node.exe` via Node's
+[Single Executable Application](https://nodejs.org/api/single-executable-applications.html)
+support. Output is **~84 MB** — that is a full Node runtime plus the app, which
+is the price of shipping one file that needs nothing installed.
 
 ## Using it
 
@@ -71,6 +102,9 @@ npm test           # 54 engine regression tests
 | **GUI: on/off** | Toggles the PlayerGui overlay. |
 | **Dock** | Script editor, output log, scheduler inspector, sample projects, and the players list. |
 | **Reset** | Rebuilds the world from scratch. |
+
+The executable and `npm start` behave identically; the exe simply serves the UI
+from memory instead of from `public/`.
 
 ### Try this
 
@@ -119,9 +153,15 @@ src/engine/            the simulation
   lua/vm.js            fengari runtime, chunk loading, coroutine control
   lua/bindings.js      the API surface scripts see (~2.4k lines)
   lua/luau.js          Luau → Lua 5.3 transpiler
+src/standalone/
+  launcher.js          embedded-asset handler, port fallback, browser launch
 server/
   index.js             HTTP static server + WebSocket protocol
   samples.js           the sample projects
+scripts/
+  build.js             esbuild bundle for the browser app
+  build-exe.js         packages everything into a standalone executable
+  fetch-node-win.js    downloads the node.exe used as the exe's body
 public/
   index.html           app shell
   styles.css           dark UI theme
@@ -130,7 +170,7 @@ public/
   js/explorer.js       explorer tree + inspector
   js/mirror.js         three.js viewport
   js/gui.js            renders PlayerGui as DOM, fires clicks into the client realm
-test/run-tests.js      54 regression tests
+test/run-tests.js      56 regression tests
 ```
 
 ## The API surface
