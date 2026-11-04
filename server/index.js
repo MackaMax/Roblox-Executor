@@ -13,10 +13,16 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Engine } from '../src/engine/engine.js';
 import { SAMPLE_PROJECTS } from './samples.js';
+import { loadEmbeddedAssets, createAssetHandler, findFreePort, listenOn, openBrowser } from '../src/standalone/launcher.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
-const PUBLIC = path.join(ROOT, 'public');
+// `import.meta` is not available in the CommonJS bundle the .exe is built from,
+// so fall back to the bundle's own directory. In a checkout this resolves to
+// server/ exactly as before; inside the exe it points at a temp dir, and the
+// `public/` lookup simply misses and the embedded assets are used instead.
+const HERE = typeof __dirname !== 'undefined'
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC = path.resolve(HERE, '..', 'public');
 
 const PORT = Number(process.env.PORT ?? 5173);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -37,43 +43,29 @@ const MIME = {
 /* static file serving                                                     */
 /* ---------------------------------------------------------------------- */
 
+/**
+ * The desktop build inlines `public/` into the executable, so the same server
+ * works with or without a project directory on disk. `embedded` is empty when
+ * running from a checkout and the handler reads `public/` instead.
+ */
+const embeddedAssets = loadEmbeddedAssets(() => globalThis.__LAB_ASSETS__ ?? null);
+const serveAsset = createAssetHandler(embeddedAssets, PUBLIC);
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  let pathname = decodeURIComponent(url.pathname);
-  if (pathname === '/') pathname = '/index.html';
+  const pathname = decodeURIComponent(url.pathname);
+
   if (pathname === '/api/samples') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ samples: SAMPLE_PROJECTS }));
     return;
   }
 
-  const filePath = path.join(PUBLIC, pathname);
-  // path traversal guard
-  if (!filePath.startsWith(PUBLIC)) {
-    res.writeHead(403).end('Forbidden');
-    return;
-  }
-  fs.stat(filePath, (err, stat) => {
-    if (err || !stat.isFile()) {
-      // SPA fallback
-      const fallback = path.join(PUBLIC, 'index.html');
-      fs.readFile(fallback, (err2, data) => {
-        if (err2) {
-          res.writeHead(404).end('Not found');
-          return;
-        }
-        res.writeHead(200, { 'content-type': MIME['.html'] });
-        res.end(data);
-      });
-      return;
-    }
-    const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, {
-      'content-type': MIME[ext] ?? 'application/octet-stream',
-      'cache-control': ext === '.html' ? 'no-cache' : 'public, max-age=60',
-    });
-    fs.createReadStream(filePath).pipe(res);
-  });
+  if (serveAsset(req, res, pathname)) return;
+
+  // SPA fallback: unknown paths get the app shell, like a dev server would
+  if (serveAsset(req, res, '/index.html')) return;
+  res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
 });
 
 /* ---------------------------------------------------------------------- */
@@ -82,6 +74,9 @@ const server = http.createServer((req, res) => {
 
 let engine = new Engine({ tickRate: 60 });
 const wss = new WebSocketServer({ server, path: '/ws' });
+// A port conflict or TLS error must surface as a clean message, not an
+// unhandled 'error' event that terminates the process with a stack trace.
+wss.on('error', (err) => console.error('  websocket error:', err.message));
 
 /** Per-socket session state. A Set of sockets is kept alongside so a world
  *  reset can re-announce the fresh world to everyone connected. */
@@ -381,16 +376,38 @@ function resetEngine() {
 
 /* ---------------------------------------------------------------------- */
 
-server.listen(PORT, HOST, () => {
-  console.log(`\n  Roblox Executor Lab`);
-  console.log(`  ───────────────────────────────────────────`);
-  console.log(`  IDE:      http://localhost:${PORT}`);
-  console.log(`  WebSocket: ws://localhost:${PORT}/ws`);
-  console.log(`  ${engine.workspace.getDescendants().length} instances in the starter place\n`);
-});
+const isDesktop = Boolean(process.pkg) || process.env.LAB_DESKTOP === '1';
 
-process.on('SIGINT', () => {
-  console.log('\nshutting down');
-  engine.stop();
+async function main() {
+// Probe for a free port first: binding the HTTP server directly and retrying
+// on EADDRINUSE would also make the attached WebSocketServer emit.
+const boundPort = await listenOn(server, HOST, await findFreePort(HOST, PORT));
+const url = `http://localhost:${boundPort}`;
+
+console.log('\n  Roblox Executor Lab');
+console.log('  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500');
+console.log(`  IDE:      ${url}`);
+console.log(`  WebSocket: ws://localhost:${boundPort}/ws`);
+console.log(`  ${engine.workspace.getDescendants().length} instances in the starter place`);
+console.log('\n  Educational use only \u2014 this sandbox never touches Roblox.');
+console.log('  Close this window to stop the server.\n');
+
+// Opening the browser is what makes double-clicking the exe feel like an app,
+// but it must never break headless runs (CI, tests, the Arena preview).
+if (process.env.LAB_NO_OPEN !== '1' && isDesktop) openBrowser(url);
+
+// Keep the console alive on Windows so a crash is readable instead of a flash.
+const shutdown = (signal) => {
+  console.log(`\n  ${signal} \u2014 shutting down.`);
+  try { engine.dispose?.(); } catch { /* best effort */ }
   server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 1500);
+};
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+main().catch((err) => {
+  console.error('\n  Failed to start:', err?.message ?? err);
+  process.exit(1);
 });

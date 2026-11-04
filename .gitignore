@@ -5,3 +5,5 @@ dist/
 .DS_Store
 .arena/
 .tmp/
+.build/
+src/standalone/assets.generated.js

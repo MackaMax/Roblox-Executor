@@ -2198,21 +2198,8 @@ const INSTANCE_METHODS = {
   GetAttributeChangedSignal(L, self) {
     return this.pushSignal(L, this.getSignal(self, `attr:${this.str(L, 2)}`));
   },
-  AddTag(L, self) {
-    self.tags.add(this.str(L, 2));
-    return 0;
-  },
-  RemoveTag(L, self) {
-    self.tags.delete(this.str(L, 2));
-    return 0;
-  },
-  HasTag(L, self) {
-    this.pushBool(L, self.tags.has(this.str(L, 2)));
-    return 1;
-  },
-  GetTags(L, self) {
-    return this.pushValue(L, [...self.tags]);
-  },
+  // AddTag / RemoveTag / HasTag are defined further down: the CollectionService
+  // entry points and the instance methods share one implementation.
   GetPropertyChangedSignal(L, self) {
     return this.pushSignal(L, this.getSignal(self, `prop:${this.str(L, 2)}`));
   },
