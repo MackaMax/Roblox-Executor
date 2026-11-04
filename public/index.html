@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Roblox Executor Lab — scripting sandbox</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧪</text></svg>" />
+</head>
+<body>
+  <!-- top bar -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◈</span>
+      <div class="brand-text">
+        <strong>Executor Lab</strong>
+        <span>educational Lua sandbox</span>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button id="btn-play" class="btn primary">Play</button>
+      <button id="btn-run" class="btn">Run script <kbd>Ctrl↵</kbd></button>
+      <button id="btn-join-client" class="btn">Join as player</button>
+      <button id="btn-new-script" class="btn">New script</button>
+      <button id="btn-reset" class="btn ghost">Reset place</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="stat-label">uptime</span><span id="stat-time">0.0s</span></div>
+      <div class="stat"><span class="stat-label">tasks</span><span id="stat-tasks">0</span></div>
+      <div class="stat"><span class="stat-label">players</span><span id="stat-players">0</span></div>
+      <div class="conn"><span id="conn-dot" data-state="connecting"></span><span id="conn-label">connecting…</span></div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- left column: explorer -->
+    <aside class="panel panel-left">
+      <div class="panel-head">
+        <h2>Explorer</h2>
+        <input id="explorer-search" class="search" type="search" placeholder="filter instances…" spellcheck="false" />
+      </div>
+      <div id="explorer" class="scroll"></div>
+
+      <div class="panel-head sub">
+        <h2>Properties</h2>
+      </div>
+      <div id="inspector" class="scroll inspector-scroll"></div>
+    </aside>
+
+    <!-- center: viewport -->
+    <section class="center-col">
+      <div class="viewport-wrap">
+        <canvas id="viewport-canvas"></canvas>
+        <div id="gui-host" class="gui-host"></div>
+        <div class="viewport-overlay">
+          <div class="overlay-pill">drag to orbit · scroll to zoom · click to select</div>
+          <button id="btn-gui-layer" class="overlay-pill overlay-btn" title="show/hide the PlayerGui overlay">GUI: on</button>
+          <div id="status-flash" class="status-flash"></div>
+        </div>
+      </div>
+
+      <div class="dock">
+        <nav class="tabs">
+          <button class="tab active" data-tab="editor">Script</button>
+          <button class="tab" data-tab="console">Output</button>
+          <button class="tab" data-tab="scheduler">Scheduler</button>
+          <button class="tab" data-tab="samples">Samples</button>
+          <button class="tab" data-tab="players">Players</button>
+        </nav>
+
+        <div class="tab-panes">
+          <div class="tab-pane active" data-pane="editor">
+            <div class="editor-bar">
+              <span id="editor-file-label" class="file-label">no file open</span>
+              <span id="editor-dirty" class="dirty-dot" title="unsaved changes"></span>
+              <div class="spacer"></div>
+              <select id="realm-select" class="select" title="Which realm the Run button targets when no file is open">
+                <option value="server">server realm</option>
+                <option value="client">client realm</option>
+              </select>
+            </div>
+            <div id="editor-host" class="editor-host"></div>
+          </div>
+
+          <div class="tab-pane" data-pane="console">
+            <div class="console-head">
+              <span>output</span>
+              <button id="btn-clear-log" class="btn tiny ghost">clear</button>
+            </div>
+            <div id="log-view" class="log-view"></div>
+            <div id="console-prompt-host" class="console-prompt-host"></div>
+          </div>
+
+          <div class="tab-pane" data-pane="scheduler">
+            <div class="pane-note">
+              Every Lua script runs inside a coroutine. This is the live queue the
+              scheduler resumes on each simulation tick.
+            </div>
+            <div id="scheduler-list" class="scheduler-list"></div>
+          </div>
+
+          <div class="tab-pane" data-pane="samples">
+            <div class="pane-note">
+              Ready-to-run scripts. Each is inserted into the place and starts
+              immediately, so you can read the code and watch the effect.
+            </div>
+            <div id="samples-list" class="samples-list"></div>
+          </div>
+
+          <div class="tab-pane" data-pane="players">
+            <div class="pane-note">
+              A “player” is a separate Lua realm with its own filtered copy of the
+              world. LocalScripts only run here — never on the server.
+            </div>
+            <div id="clients-list" class="clients-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- right column: learn -->
+    <aside class="panel panel-right">
+      <div class="panel-head">
+        <h2>Theory</h2>
+      </div>
+      <div class="scroll learn">
+        <article class="learn-card">
+          <h3>How an executor works</h3>
+          <p>
+            A Roblox executor does three things: it <em>attaches</em> to the game
+            process, <em>finds</em> the Lua state that runs game scripts, and
+            <em>injects</em> a new function into it. Once injected, the function has
+            the same access as any game script — that is why executors are powerful,
+            and why this lab keeps everything inside the sandbox.
+          </p>
+          <ol>
+            <li><strong>Attach</strong> — get a handle on the process</li>
+            <li><strong>Enumerate</strong> — find the scripting environment</li>
+            <li><strong>Inject</strong> — add <code>loadstring</code>, <code>getgenv</code>, the console…</li>
+            <li><strong>Execute</strong> — run your Lua inside the realm</li>
+          </ol>
+        </article>
+
+        <article class="learn-card">
+          <h3>Two realms, one truth</h3>
+          <p>
+            The <span class="chip server">server</span> owns the world. The
+            <span class="chip client">client</span> owns the experience: camera, GUI,
+            input. They talk in exactly one way — <code>RemoteEvent</code>.
+          </p>
+          <pre class="mini-code">-- client
+remote:FireServer(position)
+
+-- server
+remote.OnServerEvent:Connect(function(player, pos)
+  -- never trust the client
+end)</pre>
+        </article>
+
+        <article class="learn-card">
+          <h3>What this sandbox blocks</h3>
+          <p>
+            This lab deliberately cannot touch your computer. <code>io</code>,
+            <code>os.execute</code>, <code>loadfile</code> and HTTP requests are
+            removed from the Lua state, and scripts run on a budget so a
+            <code>while true do end</code> cannot freeze the engine.
+          </p>
+          <p class="muted">
+            That is the difference between this teaching tool and a real executor:
+            real ones run <em>inside</em> Roblox, on someone else's machine.
+          </p>
+        </article>
+
+        <article class="learn-card">
+          <h3>Cheat sheet</h3>
+          <pre class="mini-code">workspace:FindFirstChild("Part", true)
+Instance.new("Part")
+part.CFrame = CFrame.new(0, 5, 0)
+task.wait(1)
+task.spawn(fn)
+game:GetService("RunService")
+part.Touched:Connect(fn)
+Vector3 / CFrame / Color3 / UDim2</pre>
+        </article>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module" src="/js/bundle.js"></script>
+</body>
+</html>
