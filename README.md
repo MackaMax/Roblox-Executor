@@ -48,7 +48,8 @@ Browser (CodeMirror editor, three.js viewport)
 
 ### The Windows executable
 
-Download **`RobloxExecutorLab-win-x64.exe`** and double-click it.
+Download **`download/RobloxExecutorLab-win-x64.zip`** (31.5 MB) from this
+repository, unzip it, and double-click **`RobloxExecutorLab-win-x64.exe`**.
 
 That is the whole install. There is no Node.js requirement, no `npm install`, no
 folder to keep next to it — the server, the Lua engine and the entire UI are
