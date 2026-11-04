@@ -1,0 +1,34 @@
+{
+  "name": "roblox-executor-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A self-contained educational sandbox that teaches how a Roblox-style script executor works: a Lua VM, an instance tree, client/server script realms, and remote events.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node scripts/build.js --watch",
+    "build": "node scripts/build.js",
+    "test": "node test/run-tests.js"
+  },
+  "keywords": [
+    "roblox",
+    "lua",
+    "sandbox",
+    "educational",
+    "executor",
+    "fengari"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "fengari": "^0.1.5",
+    "three": "^0.187.0",
+    "ws": "^8.22.1"
+  },
+  "devDependencies": {
+    "@codemirror/legacy-modes": "^6.5.5",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "codemirror": "^6.0.2",
+    "esbuild": "^0.28.2"
+  }
+}
